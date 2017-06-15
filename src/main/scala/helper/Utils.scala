@@ -112,17 +112,17 @@ object Utils {
    * @return (corpus, vocabulary as array, total token count in corpus)
    */
   def preprocess(
-    sc: SparkContext,
+    spark: SparkSession,
     paths: String): (RDD[(Long, Vector)], Array[String], Long) = {
 
-    val spark = SparkSession.builder.config(sc.getConf).getOrCreate()
+    //val spark = SparkSession.builder.config(sc.getConf).getOrCreate()
     import spark.implicits._
 
     // Get dataset of document texts
     // One document in each text file. If the input consists of many small files,
     // this can result in a large number of small partitions, which can degrade performance.
     // In this case, consider using coalesce() to create fewer, larger partitions.
-    val df = sc.wholeTextFiles(paths).map(_._2.trim).toDF("docs")
+    val df = spark.sparkContext.wholeTextFiles(paths).map(_._2.trim).toDF("docs")
 
     val tokenizer = new RegexTokenizer()
       .setInputCol("docs")

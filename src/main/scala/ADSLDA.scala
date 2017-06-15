@@ -17,6 +17,7 @@ import main.scala.helper.Utils
 import main.scala.obj.LDAModel
 import main.scala.obj.LDA
 import main.scala.connector.File2KS
+import org.apache.spark.sql.SparkSession
 
 object ADSLDA {
 
@@ -36,15 +37,15 @@ object ADSLDA {
           return
         } else {
           //~~~~~~~~~~~ Spark ~~~~~~~~~~~
-          val conf = new SparkConf().setAppName("SparkGibbsLDA").setMaster("spark://PTNHTTT05:7077")
-          //val spark = SparkSession.builder().config(conf).getOrCreate()
-          val sc = SparkContext.getOrCreate(conf) //spark.sparkContext
+          val conf = new SparkConf().setAppName("ADS-LDA").setMaster("spark://PTNHTTT05:7077")
+          val spark = SparkSession.builder().config(conf).getOrCreate()
+          val sc =  spark.sparkContext //new SparkContext(conf)
           sc.setLogLevel("ERROR")
 
           //~~~~~~~~~~~ Body ~~~~~~~~~~~
           // Load documents, and prepare them for LDA.
           val preprocessStart = System.nanoTime()
-          val (corpus, vocabArray, actualNumTokens) = Utils.preprocess(sc, params.directory + "/*")
+          val (corpus, vocabArray, actualNumTokens) = Utils.preprocess(spark, params.directory + "/*")
           corpus.cache()
           val actualCorpusSize = corpus.count()
           val actualVocabSize = vocabArray.length
