@@ -22,7 +22,7 @@ object ADSCmdOption {
   directory.setArgName("folder")
   options.addOption(directory)
   
-  val ks = new Option("ks", "ksource", true, "Specify HDFS knowledge source file")
+  val ks = new Option("ks", "ksource", true, "Specify knowledge source local file")
   ks.setRequired(false)
   ks.setArgName("file")
   options.addOption(ks)

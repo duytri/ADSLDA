@@ -17,6 +17,7 @@ import org.json4s.jackson.JsonMethods._
 
 import main.scala.helper.Utils
 import main.scala.helper.BPQ
+import main.scala.helper.ADSOptimizer
 
 abstract class Model {
 
@@ -25,7 +26,7 @@ abstract class Model {
 
   /** Number of all topics */
   def t: Int
-  
+
   /** Vocabulary size (number of terms or terms in the vocabulary) */
   def vocabSize: Int
 
@@ -168,7 +169,12 @@ class LDAModel(
       case (termId, topicCounts) =>
         topicCounts.mapPairs {
           case (topicId, wordCounts) =>
-            val phiKW = ((wordCounts + eta) / (wordTopicCounts.data(topicId) + vocabSize * eta))
+            var phiKW = 0d
+            if (topicId < k) {
+              phiKW = ((wordCounts + eta) / (wordTopicCounts.data(topicId) + vocabSize * eta))
+            } else {
+              phiKW = ((wordCounts + eta) / (wordTopicCounts.data(topicId) + vocabSize * eta))
+            }
             (topicId, termId, phiKW)
         }.toArray
     }

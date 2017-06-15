@@ -153,7 +153,7 @@ class LDA private (
     private var knowledge: Array[Array[(Int, Int)]],
     private var seed: Long,
     private var checkpointInterval: Int,
-    private var adsOptimizer: ADSOptimizer) {
+    var adsOptimizer: ADSOptimizer) {
 
   /**
    * Constructs a LDA instance with default parameters.

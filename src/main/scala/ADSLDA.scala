@@ -10,7 +10,6 @@ import main.scala.obj.Parameter
 import org.apache.spark.SparkConf
 import org.apache.spark.SparkContext
 import java.io.File
-import org.apache.spark.sql.SparkSession
 import breeze.linalg.Vector
 import org.apache.spark.mllib.linalg.Vectors
 import scala.collection.mutable.ArrayBuffer
