@@ -136,6 +136,7 @@ class ADSOptimizer {
     val N_k = globalTopicTotals
     val dPow = deltaPow
     val dPowSum = deltaPowSum
+    val vcbSize = vocabSize
     val sendMsg: EdgeContext[TopicCounts, TokenCount, (Boolean, TopicCounts)] => Unit =
       (edgeContext) => {
         // Compute N_{wj} gamma_{wjk}
@@ -143,7 +144,7 @@ class ADSOptimizer {
         // E-STEP: Compute gamma_{wjk} (smoothed topic distributions), scaled by token count
         // N_{wj}.
         val scaledTopicDistribution: TopicCounts =
-          computePTopic(LDA.index2term(edgeContext.dstId, vocabSize * edgeContext.srcId), edgeContext.srcAttr, edgeContext.dstAttr, N_k, W, hiddenTopic, eta, alpha, dPow, dPowSum)
+          computePTopic(LDA.index2term(edgeContext.dstId, vcbSize * edgeContext.srcId), edgeContext.srcAttr, edgeContext.dstAttr, N_k, W, hiddenTopic, eta, alpha, dPow, dPowSum)
         edgeContext.sendToDst((false, edgeContext.dstAttr + scaledTopicDistribution))
         edgeContext.sendToSrc((false, edgeContext.srcAttr + scaledTopicDistribution))
       }
