@@ -4,7 +4,7 @@ import breeze.linalg.{ all, normalize, sum, DenseMatrix => BDM, DenseVector => B
 import org.apache.spark.graphx._
 import org.apache.spark.rdd.RDD
 import org.apache.spark.mllib.linalg.{ Vector, Vectors }
-import main.scala.helper.{ LDAOptimizer, Utils }
+import main.scala.helper.{ ADSOptimizer, Utils }
 import scala.util.control.Breaks._
 
 object LDA {
@@ -57,7 +57,7 @@ object LDA {
                Regularization for Stochastic Matrix Factorization." 2014.
    */
 
-  var ldaOptimizer = new LDAOptimizer
+  var adsOptimizer = new ADSOptimizer
 
   /**
    * Vector over topics (length k) of token counts.
@@ -80,36 +80,45 @@ object LDA {
    * Compute gamma_{wjk}, a distribution over topics k.
    */
   def computePTopic(
+    wordId: Int,
     docTopicCounts: TopicCounts,
     termTopicCounts: TopicCounts,
     totalTopicCounts: TopicCounts,
     vocabSize: Int,
+    K: Int,
     eta: Double,
-    alpha: Double): TopicCounts = {
-    val K = docTopicCounts.length
+    alpha: Double,
+    dPow: Array[Array[(Int, Double)]],
+    dPowSum: Array[Double]): TopicCounts = {
+    val T = docTopicCounts.length
     val N_j = docTopicCounts.data
     val N_w = termTopicCounts.data
     val N = totalTopicCounts.data
     val Weta = vocabSize * eta
-    val deltaTopic = BDV.fill[Double](K)(0d)
+    val deltaTopic = BDV.fill[Double](T)(0d)
     for (numTopic <- 0 until N_w.length) { // for each old topic
       for (numWord <- 0 until N_w(numTopic).toInt) { // for each word in this topic
-        var gamma_wj = new Array[Double](K)
+        var gamma_wj = new Array[Double](T)
         //do multinominal sampling via cumulative method
         for (k <- 0 until K) {
           gamma_wj(k) = (N_w(k) - 1 + eta) * (N_j(k) - 1 + alpha) / (N(k) - 1 + Weta)
         }
+        for (k <- K until T) {
+          val b = k - K
+          val dPowBW = if (dPow(b).filter(_._1 == wordId).length > 0) dPow(b).filter(_._1 == wordId)(0)._2 else 1
+          gamma_wj(k) = (N_w(k) - 1 + dPowBW) * (N_j(k) - 1 + alpha) / (N(k) - 1 + dPowSum(b))
+        }
         // cumulate multinomial parameters
-        for (k <- 1 until K) {
+        for (k <- 1 until T) {
           gamma_wj(k) += gamma_wj(k - 1)
         }
         // scaled sample because of unnormalized p[]
-        val scale = Math.random() * gamma_wj(K - 1)
+        val scale = Math.random() * gamma_wj(T - 1)
         //sample topic w.r.t distribution p
         var newTopic = 0
         if (gamma_wj(0) <= scale) {
           var low = 0
-          var high = K - 1
+          var high = T - 1
           breakable {
             while (low <= high) {
               if (low == high - 1) {
@@ -125,11 +134,11 @@ object LDA {
 
         if (newTopic != numTopic) {
           // update change of topic via deltaTopic
-          val delta = BDV.fill[Double](K)(0d)
+          val delta = BDV.fill[Double](T)(0d)
           delta(numTopic) -= 1
           delta(newTopic) += 1
           deltaTopic += delta
-        } else deltaTopic += BDV.fill[Double](K)(0d) // not change anything
+        } else deltaTopic += BDV.fill[Double](T)(0d) // not change anything
       } // end for each word in this topic
     } // end for each old topic
     return deltaTopic
@@ -141,28 +150,34 @@ class LDA private (
     private var maxIterations: Int,
     private var docConcentration: Vector,
     private var topicConcentration: Double,
+    private var knowledge: Array[Array[(Int, Int)]],
     private var seed: Long,
     private var checkpointInterval: Int,
-    private var ldaOptimizer: LDAOptimizer) {
+    private var adsOptimizer: ADSOptimizer) {
 
   /**
    * Constructs a LDA instance with default parameters.
    */
   def this() = this(k = 10, maxIterations = 20, docConcentration = Vectors.dense(-1),
-    topicConcentration = -1, seed = Utils.nextLong(), checkpointInterval = 10,
-    ldaOptimizer = new LDAOptimizer)
+    topicConcentration = -1, knowledge = null, seed = Utils.nextLong(), checkpointInterval = 10,
+    adsOptimizer = new ADSOptimizer)
 
   /**
-   * Number of topics to infer, i.e., the number of soft cluster centers.
+   * Number of hidden topics to infer, i.e., the number of soft cluster centers.
    */
   def getK: Int = k
+
+  /**
+   * Number of all topics to infer, i.e., the number of soft cluster centers.
+   */
+  def getT: Int = k + knowledge.length
 
   /**
    * Set the number of topics to infer, i.e., the number of soft cluster centers.
    * (default = 10)
    */
   def setK(k: Int): this.type = {
-    require(k > 0, s"LDA k (number of clusters) must be > 0, but was set to $k")
+    require(k >= 0, s"LDA k (number of clusters) must be >= 0, but was set to $k")
     this.k = k
     this
   }
@@ -359,8 +374,8 @@ class LDA private (
    * @param maxIterations maximum iterations of LDA
    * @return  Inferred LDA model
    */
-  def run(documents: RDD[(Long, Vector)], vocabSize: Long): LDAModel = {
-    val state = ldaOptimizer.initialize(documents, vocabSize, this)
+  def run(documents: RDD[(Long, Vector)], knowledge: Array[Array[(Int, Int)]], vocabSize: Long): LDAModel = {
+    val state = adsOptimizer.initialize(documents, knowledge, vocabSize, this)
     var iter = 0
     val iterationTimes = Array.fill[Double](maxIterations)(0)
     while (iter < maxIterations) {
@@ -370,6 +385,6 @@ class LDA private (
       iterationTimes(iter) = elapsedSeconds
       iter += 1
     }
-    state.getLDAModel(iterationTimes)
+    state.getADSModel(iterationTimes)
   }
 }

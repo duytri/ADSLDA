@@ -9,8 +9,9 @@ import breeze.linalg.{ all, normalize, sum, DenseMatrix => BDM, DenseVector => B
 import scala.util.Random
 import main.scala.obj.LDAModel
 import main.scala.obj.Model
+import scala.collection.mutable.ArrayBuffer
 
-class LDAOptimizer {
+class ADSOptimizer {
   import LDA._
 
   // Adjustable parameters
@@ -38,9 +39,15 @@ class LDAOptimizer {
   // The following fields will only be initialized through the initialize() method
   var graph: Graph[TopicCounts, TokenCount] = null
   var k: Int = 0
+  var t: Int = 0
   var vocabSize: Int = 0
   var docConcentration: Double = 0
   var topicConcentration: Double = 0
+
+  var knowledge: Array[Array[(Int, Int)]] = null
+  var deltaPow: Array[Array[(Int, Double)]] = null
+  var deltaPowSum: Array[Double] = null
+
   var checkpointInterval: Int = 10
 
   var graphCheckpointer: PeriodicGraphCheckpointer[TopicCounts, TokenCount] = null
@@ -50,15 +57,35 @@ class LDAOptimizer {
    */
   def initialize(
     docs: RDD[(Long, Vector)],
+    knowledge: Array[Array[(Int, Int)]],
     vocabSize: Long,
-    lda: LDA): LDAOptimizer = {
+    lda: LDA): ADSOptimizer = {
     // LDAOptimizer currently only supports symmetric document-topic priors
     val docConcentration = lda.getDocConcentration
 
     val topicConcentration = lda.getTopicConcentration
     val k = lda.getK
+    val t = lda.getT
+    val b = t - k
 
-    this.docConcentration = if (docConcentration <= 0) 50.0 / k else docConcentration
+    this.knowledge = knowledge
+
+    this.deltaPow = Array.ofDim[Array[(Int, Double)]](b)
+    this.deltaPowSum = Array.ofDim[Double](b)
+
+    for (topic <- 0 until b) {
+      val deltaTopic = knowledge(topic) // get frequent of word
+      var rowBuff = new ArrayBuffer[(Int, Double)]
+      var sumBuff = 0.0
+      for (wordId <- 0 until deltaTopic.length) {
+        rowBuff.append((deltaTopic(wordId)._1, math.pow(deltaTopic(wordId)._2, Utils.lamda)))
+        sumBuff += rowBuff(wordId)._2
+      }
+      deltaPow(topic) = rowBuff.toArray
+      deltaPowSum(topic) = sumBuff
+    }
+
+    this.docConcentration = if (docConcentration <= 0) 50.0 / t else docConcentration
     this.topicConcentration = if (topicConcentration <= 0) 1.1 else topicConcentration
     val randomSeed = lda.getSeed
 
@@ -77,7 +104,7 @@ class LDAOptimizer {
     val docTermVertices: RDD[(VertexId, TopicCounts)] = {
       val verticesTMP: RDD[(VertexId, TopicCounts)] =
         edges.flatMap { edge =>
-          val gamma = Utils.randomVectorInt(k, edge.attr.toInt)
+          val gamma = Utils.randomVectorInt(t, edge.attr.toInt)
           Seq((edge.srcId, gamma), (edge.dstId, gamma))
         }
       //val docVertices = verticesTMP.filter(LDA.isDocumentVertex).reduceByKey(_ + _) //.reduceByKey((a, b) => a)
@@ -89,6 +116,7 @@ class LDAOptimizer {
     // Partition such that edges are grouped by document
     this.graph = Graph(docTermVertices, edges).partitionBy(PartitionStrategy.EdgePartition1D)
     this.k = k
+    this.t = t
     this.vocabSize = docs.take(1).head._2.size
     this.checkpointInterval = lda.getCheckpointInterval
     this.graphCheckpointer = new PeriodicGraphCheckpointer[TopicCounts, TokenCount](
@@ -98,14 +126,16 @@ class LDAOptimizer {
     this
   }
 
-  def next(): LDAOptimizer = {
+  def next(): ADSOptimizer = {
     require(graph != null, "graph is null, EMLDAOptimizer not initialized.")
 
+    val hiddenTopic = k
     val eta = topicConcentration
     val W = vocabSize
     val alpha = docConcentration
-
     val N_k = globalTopicTotals
+    val dPow = deltaPow
+    val dPowSum = deltaPowSum
     val sendMsg: EdgeContext[TopicCounts, TokenCount, (Boolean, TopicCounts)] => Unit =
       (edgeContext) => {
         // Compute N_{wj} gamma_{wjk}
@@ -113,7 +143,7 @@ class LDAOptimizer {
         // E-STEP: Compute gamma_{wjk} (smoothed topic distributions), scaled by token count
         // N_{wj}.
         val scaledTopicDistribution: TopicCounts =
-          computePTopic(edgeContext.srcAttr, edgeContext.dstAttr, N_k, W, eta, alpha)
+          computePTopic(LDA.index2term(edgeContext.dstId, vocabSize * edgeContext.srcId), edgeContext.srcAttr, edgeContext.dstAttr, N_k, W, hiddenTopic, eta, alpha, dPow, dPowSum)
         edgeContext.sendToDst((false, edgeContext.dstAttr + scaledTopicDistribution))
         edgeContext.sendToSrc((false, edgeContext.srcAttr + scaledTopicDistribution))
       }
@@ -151,12 +181,12 @@ class LDAOptimizer {
   var globalTopicTotals: TopicCounts = null
 
   private def computeGlobalTopicTotals(): TopicCounts = {
-    val numTopics = k
+    val numTopics = t
     graph.vertices.filter(isTermVertex).values.fold(BDV.zeros[Double](numTopics))(_ += _)
   }
 
-  def getLDAModel(iterationTimes: Array[Double]): LDAModel = {
-    require(graph != null, "graph is null, LDAOptimizer not initialized.")
+  def getADSModel(iterationTimes: Array[Double]): LDAModel = {
+    require(graph != null, "graph is null, ADSOptimizer not initialized.")
     val checkpointFiles: Array[String] = if (keepLastCheckpoint) {
       this.graphCheckpointer.deleteAllCheckpointsButLast()
       this.graphCheckpointer.getAllCheckpointFiles
@@ -166,8 +196,8 @@ class LDAOptimizer {
     }
     // The constructor's default arguments assume gammaShape = 100 to ensure equivalence in
     // LDAModel.toLocal conversion.
-    new LDAModel(this.graph, this.globalTopicTotals, this.k, this.vocabSize,
-      Vectors.dense(Array.fill(this.k)(this.docConcentration)), this.topicConcentration,
+    new LDAModel(this.graph, this.globalTopicTotals, this.k, this.t, this.vocabSize,
+      Vectors.dense(Array.fill(this.t)(this.docConcentration)), this.topicConcentration,
       iterationTimes, checkpointFiles)
   }
 }

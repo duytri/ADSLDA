@@ -13,6 +13,9 @@ import org.apache.spark.sql.{ Row, SparkSession }
 import org.apache.spark.SparkContext
 
 object Utils {
+
+  val lamda: Double = 1d
+
   /**
    * Log Sum Exp with overflow protection using the identity:
    * For any a: $\log \sum_{n=1}^N \exp\{x_n\} = a + \log \sum_{n=1}^N \exp\{x_n - a\}$

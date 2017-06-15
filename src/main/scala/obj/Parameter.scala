@@ -10,6 +10,7 @@ class Parameter {
   var K: Int = -1
   var niters: Int = -1
   var directory: String = "@"
+  var ks: String = "@"
   var output: String = "@"
   var modelname: String = "@"
   var twords: Int = -1
@@ -34,6 +35,11 @@ class Parameter {
         else dir
       } else "@"
     }
+    ks = {
+      if (cmd.hasOption("ks")) {
+        cmd.getOptionValue("ks")
+      } else "@"
+    }
     output = {
       if (cmd.hasOption("output")) {
         var dir = cmd.getOptionValue("output")
@@ -45,7 +51,7 @@ class Parameter {
   }
 
   def checkRequirement(): Boolean = {
-    if (alpha < 0.0d || beta < 0.0d || K < 0 || niters < 0 || directory.compareTo("@") == 0)
+    if (alpha < 0.0d || beta < 0.0d || K < 0 || niters < 0 || directory.compareTo("@") == 0 || ks.compareTo("@") == 0)
       false
     else true
   }

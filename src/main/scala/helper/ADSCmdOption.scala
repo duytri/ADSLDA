@@ -8,7 +8,7 @@ import main.java.commons.cli.CommandLine
 import main.java.commons.cli.DefaultParser
 
 
-object LDACmdOption {
+object ADSCmdOption {
 
   var options = new Options
 
@@ -21,6 +21,11 @@ object LDACmdOption {
   directory.setRequired(false)
   directory.setArgName("folder")
   options.addOption(directory)
+  
+  val ks = new Option("ks", "ksource", true, "Specify HDFS knowledge source file")
+  ks.setRequired(false)
+  ks.setArgName("file")
+  options.addOption(ks)
   
   val output = new Option("o", "output", true, "Specify output directory")
   output.setRequired(false)

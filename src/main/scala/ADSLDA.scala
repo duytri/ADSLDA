@@ -1,7 +1,7 @@
 package main.scala
 
 import main.scala.obj.Document
-import main.scala.helper.LDACmdOption
+import main.scala.helper.ADSCmdOption
 import main.java.commons.cli.MissingOptionException
 import main.java.commons.cli.MissingArgumentException
 import main.java.commons.cli.CommandLine
@@ -13,32 +13,33 @@ import java.io.File
 import org.apache.spark.sql.SparkSession
 import breeze.linalg.Vector
 import org.apache.spark.mllib.linalg.Vectors
-import main.scala.obj.LDA
 import scala.collection.mutable.ArrayBuffer
 import main.scala.helper.Utils
 import main.scala.obj.LDAModel
+import main.scala.obj.LDA
+import main.scala.connector.File2KS
 
-object SparkGibbsLDA {
+object ADSLDA {
 
   def main(args: Array[String]): Unit = {
-    println("#################### Gibbs sampling LDA in Apache Spark ####################")
+    println("#################### Gibbs sampling ADS-LDA in Apache Spark ####################")
     try {
-      var cmd = LDACmdOption.getArguments(args)
+      var cmd = ADSCmdOption.getArguments(args)
       if (cmd.hasOption("help")) {
-        LDACmdOption.showHelp()
+        ADSCmdOption.showHelp()
       } else {
         // set user parameters
         var params = new Parameter
         params.getParams(cmd)
         if (!params.checkRequirement) {
-          println("ERROR!!! Phai nhap day du cac tham so: alpha, beta, directory, ntopics, niters")
-          LDACmdOption.showHelp()
+          println("ERROR!!! Phai nhap day du cac tham so: alpha, beta, directory, ksource, ntopics, niters")
+          ADSCmdOption.showHelp()
           return
         } else {
           //~~~~~~~~~~~ Spark ~~~~~~~~~~~
-          val conf = new SparkConf().setAppName("SparkGibbsLDA").setMaster("local[*]")
-          val spark = SparkSession.builder().config(conf).getOrCreate()
-          val sc = spark.sparkContext
+          val conf = new SparkConf().setAppName("SparkGibbsLDA").setMaster("spark://PTNHTTT05:7077")
+          //val spark = SparkSession.builder().config(conf).getOrCreate()
+          val sc = SparkContext.getOrCreate(conf) //spark.sparkContext
           sc.setLogLevel("ERROR")
 
           //~~~~~~~~~~~ Body ~~~~~~~~~~~
@@ -48,6 +49,7 @@ object SparkGibbsLDA {
           corpus.cache()
           val actualCorpusSize = corpus.count()
           val actualVocabSize = vocabArray.length
+          val knowledge: Array[Array[(Int, Int)]] = File2KS.readKnowledgeSrc(params.ks, vocabArray)
           val preprocessElapsed = (System.nanoTime() - preprocessStart) / 1e9
 
           println()
@@ -59,7 +61,7 @@ object SparkGibbsLDA {
           println()
 
           // Cluster the documents into three topics using LDA
-          val lda = new LDA()
+          val adsLDA = new LDA()
             .setK(params.K)
             .setAlpha(params.alpha)
             .setBeta(params.beta)
@@ -67,7 +69,7 @@ object SparkGibbsLDA {
 
           val startTime = System.nanoTime()
           // Estimate
-          val ldaModel = lda.run(corpus, actualVocabSize)
+          val ldaModel = adsLDA.run(corpus, knowledge, actualVocabSize)
 
           val elapsed = (System.nanoTime() - startTime) / 1e6
 
@@ -103,28 +105,28 @@ object SparkGibbsLDA {
               }
               println("---------------------------\n")
           }
-          
+
           //ldaModel.countGraphInfo()
-          
+
           sc.stop()
-          spark.stop()
+          //spark.stop()
 
         }
       }
     } catch {
       case moe: MissingOptionException => {
-        println("ERROR!!! Phai nhap day du cac tham so: alpha, beta, directory, datafile, ntopics, niters")
-        LDACmdOption.showHelp()
+        println("ERROR!!! Phai nhap day du cac tham so: alpha, beta, directory, ksource, ntopics, niters")
+        ADSCmdOption.showHelp()
       }
       case mae: MissingArgumentException => {
         mae.printStackTrace()
         println("ERROR!!! Thieu gia tri cua cac tham so.")
-        LDACmdOption.showHelp()
+        ADSCmdOption.showHelp()
       }
       case uoe: UnrecognizedOptionException => {
         uoe.printStackTrace()
         println("ERROR!!! Chuong trinh khong ho tro tham so ban da nhap.")
-        LDACmdOption.showHelp()
+        ADSCmdOption.showHelp()
       }
       case e: Throwable => e.printStackTrace()
     }
