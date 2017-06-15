@@ -66,6 +66,7 @@ object ADSLDA {
             .setAlpha(params.alpha)
             .setBeta(params.beta)
             .setMaxIterations(params.niters)
+            .setKnowledge(knowledge)
 
           val startTime = System.nanoTime()
           // Estimate

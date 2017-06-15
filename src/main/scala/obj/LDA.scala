@@ -329,6 +329,13 @@ class LDA private (
     this.maxIterations = maxIterations
     this
   }
+  
+  def setKnowledge(knowledge: Array[Array[(Int, Int)]]):this.type ={
+    require(knowledge != null,
+      s"Knowledge source must be not null but got ${knowledge}")
+    this.knowledge = knowledge
+    this
+  }
 
   /**
    * Random seed for cluster initialization.
