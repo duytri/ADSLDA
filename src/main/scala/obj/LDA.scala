@@ -68,9 +68,9 @@ object LDA {
   type TokenCount = Double
 
   /** Term vertex IDs are {-1, -2, ..., -vocabSize} */
-  def term2index(term: Int, distance: Long): Long = -(1 + term.toLong + distance)
+  def term2index(term: Int): Long = -(1 + term.toLong)
 
-  def index2term(termIndex: Long, distance: Long): Int = -(1 + termIndex + distance).toInt
+  def index2term(termIndex: Long): Int = -(1 + termIndex).toInt
 
   def isDocumentVertex(v: (VertexId, _)): Boolean = v._1 >= 0
 

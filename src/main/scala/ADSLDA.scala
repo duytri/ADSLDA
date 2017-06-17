@@ -37,7 +37,7 @@ object ADSLDA {
           return
         } else {
           //~~~~~~~~~~~ Spark ~~~~~~~~~~~
-          val conf = new SparkConf().setAppName("ADS-LDA").setMaster("spark://PTNHTTT05:7077")
+          val conf = new SparkConf().setAppName("ADS-LDA").setMaster("local[*]")
           val spark = SparkSession.builder().config(conf).getOrCreate()
           val sc =  spark.sparkContext //new SparkContext(conf)
           sc.setLogLevel("ERROR")

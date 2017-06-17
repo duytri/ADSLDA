@@ -116,7 +116,7 @@ class LDAModel(
     val termTopicCounts: Array[(Int, TopicCounts)] =
       graph.vertices.filter(_._1 < 0).map {
         case (termIndex, cnts) =>
-          (index2term(termIndex, vocabSize * getDocId(termIndex)), cnts)
+          (index2term(termIndex), cnts)
       }.collect()
     // Convert to Matrix
     val brzTopics = BDM.zeros[Double](vocabSize, k)
@@ -143,7 +143,7 @@ class LDAModel(
       val maxVertexPerTopic = phi.filter(_._1 == topic).takeOrdered(maxTermsPerTopic)(Ordering[Double].reverse.on(_._3))
       result(topic) = maxVertexPerTopic.map {
         case (topicId, termId, phi) =>
-          (index2term(termId, vocabSize * getDocId(termId)), phi)
+          (index2term(termId), phi)
       }
     }
     return result
@@ -201,7 +201,7 @@ class LDAModel(
       (a, b) =>
         a + b
     val docSum = graph.aggregateMessages[Double](sendMsg, _ + _) // mergMsg)
-      .map(_._2).fold(0.0)(_ + _)
+      .map(_._2).reduce(_ + _)
     return math.exp(-1 * docSum / tokenSize)
   }
 

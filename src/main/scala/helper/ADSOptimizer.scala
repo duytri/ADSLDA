@@ -95,7 +95,7 @@ class ADSOptimizer {
         // Add edges for terms with non-zero counts.
         Utils.asBreeze(termCounts).activeIterator.filter(_._2 != 0.0).map {
           case (term, cnt) =>
-            Edge(docID, term2index(term, docID * vocabSize), cnt)
+            Edge(docID, term2index(term), cnt)
         }
     }
 
@@ -144,7 +144,7 @@ class ADSOptimizer {
         // E-STEP: Compute gamma_{wjk} (smoothed topic distributions), scaled by token count
         // N_{wj}.
         val scaledTopicDistribution: TopicCounts =
-          computePTopic(LDA.index2term(edgeContext.dstId, vcbSize * edgeContext.srcId), edgeContext.srcAttr, edgeContext.dstAttr, N_k, W, hiddenTopic, eta, alpha, dPow, dPowSum)
+          computePTopic(LDA.index2term(edgeContext.dstId), edgeContext.srcAttr, edgeContext.dstAttr, N_k, W, hiddenTopic, eta, alpha, dPow, dPowSum)
         edgeContext.sendToDst((false, edgeContext.dstAttr + scaledTopicDistribution))
         edgeContext.sendToSrc((false, edgeContext.srcAttr + scaledTopicDistribution))
       }
@@ -152,15 +152,15 @@ class ADSOptimizer {
     // TODO: Add zero/seqOp/combOp option to aggregateMessages. (SPARK-5438)
     val mergeMsg: ((Boolean, TopicCounts), (Boolean, TopicCounts)) => (Boolean, TopicCounts) =
       (m0, m1) => {
-        val choice =
+        val sum =
           if (m0._1) {
-            m0._2
+            m0._2 += m1._2
           } else if (m1._1) {
-            m1._2
+            m1._2 += m0._2
           } else {
-            m1._2
+            m0._2 + m1._2
           }
-        (true, choice)
+        (true, sum)
       }
     // M-STEP: Aggregation computes new N_{kj}, N_{wk} counts.
     val docTopicDistributions: VertexRDD[TopicCounts] =
@@ -183,7 +183,8 @@ class ADSOptimizer {
 
   private def computeGlobalTopicTotals(): TopicCounts = {
     val numTopics = t
-    graph.vertices.filter(isTermVertex).values.fold(BDV.zeros[Double](numTopics))(_ += _)
+    //graph.vertices.filter(isTermVertex).values.fold(BDV.zeros[Double](numTopics))(_ += _)
+    graph.vertices.filter(isDocumentVertex).values.reduce(_ + _)
   }
 
   def getADSModel(iterationTimes: Array[Double]): LDAModel = {
